@@ -1,0 +1,6 @@
+Automated Study Schedule
+========================
+2026-10-08 -> Mathematics - Derivatives
+2026-10-09 -> Physics - Dynamics
+2026-10-10 -> Computer Science - Loops
+2026-10-11 -> History - World War I
