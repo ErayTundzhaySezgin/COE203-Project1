@@ -1,0 +1,19 @@
+# Python bytecode and cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and OS generated files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Generated project outputs
+study_schedule.txt
+notes.md
+**/notes.md

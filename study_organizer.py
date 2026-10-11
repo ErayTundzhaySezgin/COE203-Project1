@@ -1,5 +1,6 @@
 import os
 import datetime
+import sys
 
 def create_study_workspace(topics_file: str) -> None:
     """
@@ -8,7 +9,8 @@ def create_study_workspace(topics_file: str) -> None:
     study schedule.
     """
     if not os.path.exists(topics_file):
-        raise FileNotFoundError(f"The input file '{topics_file}' was not found.")
+        print(f"The input file '{topics_file}' was not found.")
+        sys.exit(1)
 
     with open(topics_file, 'r', encoding='utf-8') as file:
         topics = [line.strip() for line in file if line.strip()]
@@ -27,9 +29,11 @@ def create_study_workspace(topics_file: str) -> None:
             date_str = study_date.strftime("%Y-%m-%d")
             
             notes_file_path = os.path.join(topic, "notes.md")
-            
-            with open(notes_file_path, 'w', encoding='utf-8') as notes_file:
-                notes_file.write(f"# {topic}\n\n**Scheduled Date:** {date_str}\n\n")
+            if not os.path.exists(notes_file_path):
+                with open(notes_file_path, 'w', encoding='utf-8') as notes_file:
+                    notes_file.write(f"# {topic}\n\n**Scheduled Date:** {date_str}\n\n")
+            else:
+                print(f"Notes file for topic '{topic}' already exists. Skipping creation.")
             
             schedule_file.write(f"{date_str} -> {topic}\n")
 
