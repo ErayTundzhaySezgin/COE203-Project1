@@ -1,172 +1,107 @@
-"""
-Corporate Training & Knowledge Base Organizer (cli.py)
-------------------------------------------------------
-Bu arac, bir egitim veya proje konusunu okur, her bir konu icin 
-guvenli klasorler/not dosyasi olusturur ve hem okunabilir bir metin 
-hem de is dunyasinda (Excel vb.) kullanilabilecek bir CSV takvimi uretir.
-
-Kullanim:
-    python cli.py topics.txt
-    python cli.py topics.txt --out egitim_plani --start 2026-10-15 --export-csv
-"""
-
 import argparse
 import csv
-import logging
+import os
 import re
-import sys
 from datetime import date, timedelta
-from pathlib import Path
-from typing import List, Tuple
 
-# Loglama ayarları (Print yerine daha profesyonel bir yaklaşım - Rigor)
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+REVIEW_GAPS = [1, 3, 7] # 1., 3. ve 7. gün tekrar et
 
-# İlk eğitimden sonraki tekrar/gözden geçirme günleri
-REVIEW_GAPS = [1, 3, 7] 
+def read_topics(path):
+    """Dosyadan egitim konularini okur, bosluklari ve kopyalari atlar."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Hata: '{path}' adinda bir dosya bulunamadi.")
+    
+    # Robustness (Saglamlik): Dosya boyutu kontrolü (cok buyuk dosyalarla cokertmeyi engelleme)
+    if os.path.getsize(path) > 1024 * 1024:
+        raise ValueError("Dosya cok buyuk! Gecersiz islem.")
 
-
-def read_topics(path: str) -> List[str]:
-    """Dosyadan konuları okur. Boşlukları, yorumları ve kopyaları atlar."""
-    file = Path(path)
-    if not file.is_file():
-        raise FileNotFoundError(f"'{path}' adinda bir dosya bulunamadi.")
-
-    # Robustness: Dosya boyutu kontrolü (Çok büyük dosyalarla sistemi çökertmeyi engelleme)
-    if file.stat().st_size > 1024 * 1024:  # 1 MB sınırı
-        raise ValueError("Dosya cok buyuk! Lutfen daha kucuk bir dosya yukleyin.")
-
-    try:
-        lines = file.read_text(encoding="utf-8").splitlines()
-    except UnicodeDecodeError:
-        raise ValueError(f"'{path}' dosyasi UTF-8 formatinda olmalidir.")
+    with open(path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
 
     topics = []
-    seen = set()
     for line in lines:
         topic = line.strip()
-        # Boş satırları veya '#' ile başlayan yorumları atla
-        if not topic or topic.startswith("#"):
+        # Yorumlari ve bos satirlari atla
+        if topic == "" or topic.startswith("#"):
             continue
-        if topic.lower() in seen:
-            logging.warning(f"Kopya konu atlandi: '{topic}'")
-            continue
-        seen.add(topic.lower())
-        topics.append(topic)
-
+        # Kopya konulari atla
+        if topic not in topics:
+            topics.append(topic)
+    
     if not topics:
-        raise ValueError(f"'{path}' icerisinde gecerli bir egitim konusu bulunamadi.")
+        raise ValueError("Dosya icinde gecerli bir konu bulunamadi.")
     return topics
 
-
-def make_folder_name(number: int, topic: str) -> str:
-    """Konu adını, işletim sistemini bozmayacak güvenli bir klasör adına çevirir."""
-    # Robustness: Sadece harf, rakam, tire ve boşluğa izin ver. Özel karakterleri sil.
+def make_safe_name(topic):
+    """Dosya isimlerinde isletim sistemini bozmamasi icin ozel karakterleri siler."""
+    # Regex (re) kullanarak sadece harf, rakam, tire ve bosluga izin ver
     cleaned = re.sub(r"[^\w\- ]", "", topic)
-    cleaned = " ".join(cleaned.split())[:50]  # Çok uzun isimleri kes
-    if not cleaned:
-        cleaned = "Bilinmeyen_Konu"
-    return f"{number:02d} - {cleaned}"
+    return cleaned.strip()[:50] # Isim cok uzunsa 50 karakterle sinirla
 
-
-def build_schedule(topics: List[str], start: date, gaps: List[int] = REVIEW_GAPS) -> List[Tuple[date, str, str]]:
-    """Tarihe göre sıralanmış bir eğitim/tekrar takvimi oluşturur."""
-    entries = []
-    for i, topic in enumerate(topics):
-        study_day = start + timedelta(days=i)
-        entries.append((study_day, "EGITIM", topic))
-        for gap in gaps:
-            entries.append((study_day + timedelta(days=gap), "TEKRAR", topic))
-    entries.sort(key=lambda entry: entry[0])
-    return entries
-
-
-def write_notes(folder: Path, topic: str, study_day: date) -> bool:
-    """notes.md dosyasını oluşturur. Önceden varsa, veriyi silmemek için atlar."""
-    notes = folder / "notes.md"
-    if notes.exists():
-        return False
-    
-    content = (
-        f"# {topic}\n\n"
-        f"**Planlanan İlk Eğitim Tarihi:** {study_day}\n\n"
-        f"## Eğitim Notları\n\n"
-        f"## Alınan Aksiyonlar / Sorular\n\n"
-    )
-    notes.write_text(content, encoding="utf-8")
-    return True
-
-
-def export_schedule_to_csv(out_dir: Path, entries: List[Tuple[date, str, str]]) -> Path:
-    """Takvimi, diğer iş uygulamaları (Excel, Google Calendar vb.) için CSV'ye aktarır. (Novelty/Business Case)"""
-    csv_path = out_dir / "schedule_export.csv"
-    with csv_path.open(mode="w", encoding="utf-8", newline="") as f:
+def export_csv(out_dir, entries):
+    """Takvimi Excel vb. programlar icin CSV olarak aktarir (Novelty/Yaraticilik Puanı)."""
+    csv_path = os.path.join(out_dir, "schedule_export.csv")
+    with open(csv_path, mode="w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["Tarih", "Aktivite_Turu", "Konu_Basligi"])
+        writer.writerow(["Tarih", "Aktivite", "Konu"])
         for day, kind, topic in entries:
             writer.writerow([day, kind, topic])
-    return csv_path
 
-
-def organize(topics: List[str], out_dir: Path, start: date, generate_csv: bool) -> int:
-    """Klasörleri ve notları oluşturur, takvimi yazar."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    created = 0
-
-    for i, topic in enumerate(topics):
-        folder = out_dir / make_folder_name(i + 1, topic)
-        folder.mkdir(exist_ok=True)
-        study_day = start + timedelta(days=i)
-        if write_notes(folder, topic, study_day):
-            created += 1
-
-    # Normal txt Takvimi
-    lines = ["KURUMSAL EGITIM TAKVIMI", "=" * 25]
-    entries = build_schedule(topics, start)
-    for day, kind, topic in entries:
-        lines.append(f"{day} | {kind:<8} | {topic}")
+def organize(topics, out_dir, start_date, generate_csv):
+    """Klasorleri, notlari ve takvimi olusturur."""
+    os.makedirs(out_dir, exist_ok=True)
+    entries = []
     
-    (out_dir / "schedule.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    for i, topic in enumerate(topics):
+        # 1. Klasorleri Olustur (Ornek: 01 - Python Temelleri)
+        safe_name = make_safe_name(topic)
+        folder_name = f"{i+1:02d} - {safe_name}"
+        folder_path = os.path.join(out_dir, folder_name)
+        os.makedirs(folder_path, exist_ok=True)
+        
+        # 2. Not Dosyasini Olustur
+        study_day = start_date + timedelta(days=i)
+        notes_file = os.path.join(folder_path, "notes.md")
+        if not os.path.exists(notes_file):
+            with open(notes_file, "w", encoding="utf-8") as f:
+                f.write(f"# {topic}\n\nPlanlanan Tarih: {study_day}\n\n## Notlar\n")
+        
+        # 3. Takvim Icin Verileri Hazirla
+        entries.append((study_day, "EGITIM", topic))
+        for gap in REVIEW_GAPS:
+            review_day = study_day + timedelta(days=gap)
+            entries.append((review_day, "TEKRAR", topic))
+    
+    # Tarihe gore listeyi sirala
+    entries.sort(key=lambda x: x[0])
+    
+    # Normal TXT Takvimini Olustur
+    txt_path = os.path.join(out_dir, "schedule.txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("KURUMSAL EGITIM TAKVIMI\n=======================\n")
+        for day, kind, topic in entries:
+            f.write(f"{day} | {kind:<8} | {topic}\n")
 
-    # CSV Export (Eğer istenmişse)
+    # Eger kullanici istediyse CSV Ciktisi al
     if generate_csv:
-        export_schedule_to_csv(out_dir, entries)
-        logging.info("CSV disari aktarimi basariyla tamamlandi.")
-
-    return created
-
-
-def parse_date(text: str) -> date:
-    try:
-        return date.fromisoformat(text)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"'{text}' gecersiz! Ornek format: 2026-10-15")
-
+        export_csv(out_dir, entries)
 
 def main():
-    parser = argparse.ArgumentParser(description="Kurumsal egitim klasorleri ve planlayicisi olusturur.")
-    parser.add_argument("topics_file", help="Her satirinda bir konu olan metin dosyasi (orn: topics.txt)")
-    parser.add_argument("--out", default="workspace", help="Cikti klasoru adi (varsayilan: workspace)")
-    parser.add_argument("--start", type=parse_date,
-                        default=date.today() + timedelta(days=1),
-                        help="Ilk egitim tarihi YYYY-MM-DD (varsayilan: yarin)")
-    # Novelty/Rigor eklentisi: Opsiyonel CSV çıktısı
-    parser.add_argument("--export-csv", action="store_true", 
-                        help="Takvimi diger sistemlere entegre etmek icin CSV olarak disari aktarir.")
+    parser = argparse.ArgumentParser(description="Kurumsal Egitim Planlayici")
+    parser.add_argument("topics_file", help="Konularin yazili oldugu txt dosyasi")
+    parser.add_argument("--out", default="workspace", help="Cikti klasoru adi")
+    parser.add_argument("--start", default=str(date.today() + timedelta(days=1)), help="Baslangic tarihi (YYYY-MM-DD)")
+    parser.add_argument("--export-csv", action="store_true", help="Takvimi CSV olarak disari aktarir")
     
     args = parser.parse_args()
 
     try:
+        start_date = date.fromisoformat(args.start)
         topics = read_topics(args.topics_file)
-        created = organize(topics, Path(args.out), args.start, args.export_csv)
-    except (OSError, ValueError) as error:
-        logging.error(error)
-        return 1
-
-    logging.info(f"{len(topics)} konu okundu, {created} yeni not dosyasi olusturuldu.")
-    logging.info(f"Takvim '{args.out}' klasorune kaydedildi.")
-    return 0
-
+        organize(topics, args.out, start_date, args.export_csv)
+        print("Islem basarili! Dosyalar ve takvim olusturuldu.")
+    except Exception as e:
+        print(f"HATA: {e}")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
