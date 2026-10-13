@@ -47,7 +47,7 @@ def export_csv(out_dir, entries):
         for day, kind, topic in entries:
             writer.writerow([day, kind, topic])
 
-def organize(topics, out_dir, start_date, generate_csv):
+def organise(topics, out_dir, start_date, generate_csv):
     """Generates the folders, markdown notes, and the schedule."""
     os.makedirs(out_dir, exist_ok=True)
     entries = []
@@ -87,7 +87,7 @@ def organize(topics, out_dir, start_date, generate_csv):
         export_csv(out_dir, entries)
 
 def main():
-    parser = argparse.ArgumentParser(description="Corporate Training & Knowledge Base Scheduler")
+    parser = argparse.ArgumentParser(description="Corporate Training & Knowledge Base Organiser")
     parser.add_argument("topics_file", help="Text file containing the topics")
     parser.add_argument("--out", default="workspace", help="Output directory name")
     parser.add_argument("--start", default=str(date.today() + timedelta(days=1)), help="Start date (YYYY-MM-DD)")
@@ -98,7 +98,7 @@ def main():
     try:
         start_date = date.fromisoformat(args.start)
         topics = read_topics(args.topics_file)
-        organize(topics, args.out, start_date, args.export_csv)
+        organise(topics, args.out, start_date, args.export_csv)
         print("Success! Folders, notes, and the schedule have been generated.")
     except Exception as e:
         print(f"ERROR: {e}")
